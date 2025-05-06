@@ -1,0 +1,43 @@
+version: "3.8"
+
+services:
+
+  consul:
+    image: hashicorp/consul:1.20.5
+    ports:
+      - "8500:8500"
+      - "8600:8600/udp"
+    command: agent -dev -client=0.0.0.0
+    networks:
+      - app-net
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+
+  api-gateway:
+    image: api-gateway:latest
+    depends_on:
+      - consul
+    ports:
+      - "8080:8080"
+    networks:
+      - app-net
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+  user-service:
+    image: user-service:latest
+    depends_on:
+      - consul
+    networks:
+      - app-net
+    deploy:
+      replicas: 3  # 3 instance
+      restart_policy:
+        condition: on-failure
+
+networks:
+  app-net:
+    driver: overlay

@@ -1,0 +1,78 @@
+server:
+  port: 8080
+  address: 0.0.0.0
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    consul:
+      host: consul
+      port: 8500
+      discovery:
+        register: true
+        register-health-check: true
+        health-check-path: /actuator/health
+        health-check-interval: 20s
+        prefer-ip-address: false  # Hostname kullanılacak
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+      routes:
+        - id: user-service
+          uri: lb://userservice
+          predicates:
+            - Path=/users/**
+          filters:
+            - name: Retry
+              args:
+                retries: 3
+                statuses: BAD_GATEWAY
+                methods: GET,POST
+                backoff:
+                  firstBackoff: 100ms
+                  maxBackoff: 500ms
+                  factor: 2
+                  basedOnPreviousValue: true
+            - name: CircuitBreaker
+              args:
+                name: userServiceCircuitBreaker
+                fallbackUri: forward:/user-service-fallback
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    org.springframework.cloud.gateway: DEBUG
+
+
+# Resilience4J (CircuitBreaker) Yapılandırması
+resilience4j.circuitbreaker:
+  instances:
+    userServiceCircuitBreaker:
+      registerHealthIndicator: true
+      failureRateThreshold: 50
+      slowCallRateThreshold: 50
+      slowCallDurationThreshold: 2000ms
+      permittedNumberOfCallsInHalfOpenState: 10
+      maxWaitDurationInHalfOpenState: 10s
+      slidingWindowSize: 10
+      slidingWindowType: COUNT_BASED
+      minimumNumberOfCalls: 5
+      automaticTransitionFromOpenToHalfOpenEnabled: true
+
+# Fallback Yolları (CircuitBreaker için)
+# Bu yollar, CircuitBreaker açıldığında çağrılacak olan local controller'lara yönlendirir.
+# Bu örnekte, basit birer mesaj döndüren controller'lar varsayılmıştır.
+# Gerçek uygulamalarda daha anlamlı fallback logic'i uygulayabilirsiniz.
+# Örneğin, önbellekten veri döndürmek, statik bir sayfa göstermek vb.
+# Bu controller'lar için gerekli sınıfları oluşturmanız gerekir.
